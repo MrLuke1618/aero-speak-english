@@ -1,0 +1,8 @@
+{
+  "name": "AeroSpeak AI",
+  "description": "Elite AI English Speaking Examiner, Senior IELTS Coach, and Bilingual Fluency Mentor for daily speaking practice, job interviews, and strict mock tests.",
+  "requestFramePermissions": [
+    "microphone"
+  ],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
