@@ -19,12 +19,14 @@ import { requestTTS, soundManager } from './utils/audio';
 import { cleanAiArtifacts } from './utils/textFormatter';
 import { translations } from './translations';
 import { getInstantCuratedTopic } from './curatedTopics';
+import { ApiKeyModal } from './components/ApiKeyModal';
 
 export default function App() {
   const [currentMode, setCurrentMode] = useState<MainMode>('mode1_daily');
   const [currentSubMode, setCurrentSubMode] = useState<SubMode>('coffee_chat');
 
   const [settings, setSettings] = useState<UserSettings>(() => {
+    const savedCustomKey = localStorage.getItem('aerospeak_custom_key') || undefined;
     const saved = localStorage.getItem('aerospeak_settings');
     if (saved) {
       try {
@@ -35,7 +37,9 @@ export default function App() {
           autoPlayAudio: parsed.autoPlayAudio ?? true,
           voice: parsed.voice || 'Kore',
           speechRate: parsed.speechRate || 1.0,
-          model: parsed.model || 'gemini-flash-latest',
+          model: parsed.model || (savedCustomKey ? 'gemini-3.1-pro-preview' : 'gemini-flash-latest'),
+          customApiKey: savedCustomKey,
+          isProUnlocked: Boolean(savedCustomKey),
         };
       } catch (e) {}
     }
@@ -45,7 +49,9 @@ export default function App() {
       autoPlayAudio: true,
       voice: 'Kore',
       speechRate: 1.0,
-      model: 'gemini-flash-latest',
+      model: savedCustomKey ? 'gemini-3.1-pro-preview' : 'gemini-flash-latest',
+      customApiKey: savedCustomKey,
+      isProUnlocked: Boolean(savedCustomKey),
     };
   });
 
@@ -70,9 +76,10 @@ export default function App() {
   const [activeEvaluation, setActiveEvaluation] = useState<EvaluationReport | null>(null);
   const [evaluatedSpeechText, setEvaluatedSpeechText] = useState<string>('');
 
-  // Modals for Mock Test & Guide
+  // Modals for Mock Test, Guide, and Custom API Key
   const [showMockTestModal, setShowMockTestModal] = useState<boolean>(false);
   const [showGuideModal, setShowGuideModal] = useState<boolean>(false);
+  const [showApiKeyModal, setShowApiKeyModal] = useState<boolean>(false);
   const [guideModalTab, setGuideModalTab] = useState<'features' | 'rubric' | 'plan' | 'anxiety' | 'apiKey'>('features');
 
   // Save settings
@@ -81,6 +88,24 @@ export default function App() {
       const updated = { ...prev, ...newPartial };
       localStorage.setItem('aerospeak_settings', JSON.stringify(updated));
       return updated;
+    });
+  };
+
+  const handleSaveApiKey = (key: string) => {
+    localStorage.setItem('aerospeak_custom_key', key);
+    handleUpdateSettings({
+      customApiKey: key,
+      isProUnlocked: true,
+      model: 'gemini-3.1-pro-preview',
+    });
+  };
+
+  const handleRemoveApiKey = () => {
+    localStorage.removeItem('aerospeak_custom_key');
+    handleUpdateSettings({
+      customApiKey: undefined,
+      isProUnlocked: false,
+      model: 'gemini-flash-latest',
     });
   };
 
@@ -109,13 +134,21 @@ export default function App() {
     fetchTopic(currentMode, currentSubMode, newLang);
   };
 
+  const getApiHeaders = () => {
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (settings.customApiKey) {
+      headers['x-gemini-api-key'] = settings.customApiKey;
+    }
+    return headers;
+  };
+
   // Fetch dynamic topic from server
   const fetchTopic = async (mode: MainMode, subMode: SubMode, lang = settings.language) => {
     setIsLoadingTopic(true);
     try {
       const res = await fetch('/api/generate-topic', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getApiHeaders(),
         body: JSON.stringify({ mode, subMode, language: lang, model: settings.model }),
       });
       if (res.ok) {
@@ -179,7 +212,7 @@ export default function App() {
     try {
       const res = await fetch('/api/chat', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getApiHeaders(),
         body: JSON.stringify({
           mode: currentMode,
           subMode: currentSubMode,
@@ -243,7 +276,7 @@ export default function App() {
     try {
       const res = await fetch('/api/evaluate', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getApiHeaders(),
         body: JSON.stringify({
           speechText,
           topic: topic?.title || 'Speaking Turn',
@@ -296,6 +329,7 @@ export default function App() {
           setGuideModalTab(tab || 'features');
           setShowGuideModal(true);
         }}
+        onOpenApiKeyModal={() => setShowApiKeyModal(true)}
         onToggleLanguage={handleToggleLanguage}
       />
 
@@ -368,6 +402,17 @@ export default function App() {
           }}
           language={settings.language}
           initialTab={guideModalTab}
+        />
+      )}
+
+      {/* Custom Gemini API Key & Pro Unlock Modal */}
+      {showApiKeyModal && (
+        <ApiKeyModal
+          currentApiKey={settings.customApiKey}
+          onSaveKey={handleSaveApiKey}
+          onRemoveKey={handleRemoveApiKey}
+          onClose={() => setShowApiKeyModal(false)}
+          language={settings.language}
         />
       )}
     </div>

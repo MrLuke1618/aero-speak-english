@@ -48,6 +48,7 @@ const VALID_TEXT_MODELS = [
   'gemini-flash-latest', // Google's official alias auto-tracking newest Gemini Flash
   'gemini-3.1-flash-lite', // Ultra-fast, zero spike 3.5+ model
   'gemini-3.8-flash',    // Flagship Gemini 3.8 Flash (>= 3.5)
+  'gemini-3.1-pro-preview', // Flagship Pro Reasoning model for advanced users
 ];
 
 function resolveGeminiTextModel(requestedModel?: string): string {
@@ -64,8 +65,24 @@ function resolveGeminiTTSModel(requestedModel?: string): string {
   return process.env.GEMINI_TTS_MODEL || 'gemini-3.8-flash-lite-tts';
 }
 
+// Helper to instantiate client with optional custom user key or default server key
+function getAIClient(customApiKey?: string) {
+  const key = (customApiKey && typeof customApiKey === 'string' && customApiKey.trim().length > 10)
+    ? customApiKey.trim()
+    : process.env.GEMINI_API_KEY;
+  return new GoogleGenAI({
+    apiKey: key,
+    httpOptions: {
+      headers: {
+        'User-Agent': 'aistudio-build',
+      },
+    },
+  });
+}
+
 // Multi-tier model runner with automatic fallback on 503 (high demand) or 429
-async function generateWithModelFallback(requestedModel: string, payload: any) {
+async function generateWithModelFallback(requestedModel: string, payload: any, customApiKey?: string) {
+  const client = getAIClient(customApiKey);
   const modelsToTry = [
     requestedModel,
     'gemini-flash-latest',
@@ -76,7 +93,7 @@ async function generateWithModelFallback(requestedModel: string, payload: any) {
   let lastError: any = null;
   for (const model of modelsToTry) {
     try {
-      const response = await ai.models.generateContent({
+      const response = await client.models.generateContent({
         ...payload,
         model,
       });
@@ -88,16 +105,6 @@ async function generateWithModelFallback(requestedModel: string, payload: any) {
   }
   throw lastError;
 }
-
-// Shared Gemini AI client with telemetry header
-const ai = new GoogleGenAI({
-  apiKey: process.env.GEMINI_API_KEY,
-  httpOptions: {
-    headers: {
-      'User-Agent': 'aistudio-build',
-    },
-  },
-});
 
 const SYSTEM_PROMPT = `
 You are "AeroSpeak AI", an elite, empathetic, and expert AI English Speaking Examiner, Senior IELTS Coach, and Bilingual Mentor (fluent in English and Vietnamese).
@@ -124,6 +131,32 @@ Operational Modes:
   * Guide users on how to practice, explain IELTS/CEFR bands, overcoming speaking anxiety, customized study schedules in English & Vietnamese.
 `;
 
+// Endpoint to validate a custom Gemini API key
+app.post('/api/validate-key', async (req, res) => {
+  try {
+    const { apiKey } = req.body;
+    if (!apiKey || typeof apiKey !== 'string' || apiKey.trim().length < 15) {
+      return res.status(400).json({ valid: false, error: 'API key format is invalid. Key should start with AIzaSy...' });
+    }
+    const testClient = new GoogleGenAI({
+      apiKey: apiKey.trim(),
+      httpOptions: { headers: { 'User-Agent': 'aistudio-build' } },
+    });
+    // Test a lightweight ping to verify credentials
+    const response = await testClient.models.generateContent({
+      model: 'gemini-3.1-flash-lite',
+      contents: 'Ping',
+    });
+    if (response && response.text) {
+      return res.json({ valid: true, message: 'API key is valid and active!' });
+    }
+    return res.status(400).json({ valid: false, error: 'Could not verify API key with Google Gemini service.' });
+  } catch (error: any) {
+    console.error('Validate key error:', error);
+    return res.status(400).json({ valid: false, error: error?.message || 'Invalid Gemini API key.' });
+  }
+});
+
 // Chat endpoint for conversational speaking turns
 app.post('/api/chat', async (req, res) => {
   try {
@@ -135,6 +168,8 @@ app.post('/api/chat', async (req, res) => {
       targetBand = '7.0',
       activeTopic = '',
     } = req.body;
+
+    const customApiKey = (req.headers['x-gemini-api-key'] as string) || req.body?.apiKey;
 
     const formattedHistory = messages.map((m: any) => ({
       role: m.role === 'assistant' ? 'model' : 'user',
@@ -181,7 +216,7 @@ Guidelines for this turn:
           ],
         },
       ],
-    });
+    }, customApiKey);
 
     const reply = cleanText(response.text || '');
     res.json({ reply });
@@ -235,6 +270,7 @@ IMPORTANT:
 - High quality model answers.
 `;
 
+    const customApiKey = (req.headers['x-gemini-api-key'] as string) || req.body?.apiKey;
     const textModel = resolveGeminiTextModel(req.body.model);
 
     const { response } = await generateWithModelFallback(textModel, {
@@ -337,7 +373,7 @@ IMPORTANT:
           ],
         },
       },
-    });
+    }, customApiKey);
 
     const parsed = deepClean(JSON.parse(response.text || '{}'));
     res.json(parsed);
@@ -376,6 +412,7 @@ Return dynamic content in JSON:
 - suggestedKeyWords: array of 4-5 high-level collocations or idioms suitable for this topic
 `;
 
+    const customApiKey = (req.headers['x-gemini-api-key'] as string) || req.body?.apiKey;
     const textModel = resolveGeminiTextModel(req.body.model);
 
     try {
@@ -412,7 +449,7 @@ Return dynamic content in JSON:
             required: ['title', 'context', 'questions', 'suggestedKeyWords'],
           },
         },
-      });
+      }, customApiKey);
 
       const data = deepClean(JSON.parse(response.text || '{}'));
       return res.json(data);
@@ -433,6 +470,7 @@ Return dynamic content in JSON:
 app.post('/api/tts', async (req, res) => {
   try {
     const { text, voice = 'Kore', style = 'Warm, natural English speaking coach', ttsModel } = req.body;
+    const customApiKey = (req.headers['x-gemini-api-key'] as string) || req.body?.apiKey;
 
     if (!text || text.trim().length === 0) {
       return res.status(400).json({ error: 'Text is required for TTS' });
@@ -441,8 +479,9 @@ app.post('/api/tts', async (req, res) => {
     // Limit text to avoid excessively large payloads and clean any markdown
     const trimmedText = cleanText(text).slice(0, 800);
     const model = resolveGeminiTTSModel(ttsModel);
+    const client = getAIClient(customApiKey);
 
-    const response = await ai.models.generateContent({
+    const response = await client.models.generateContent({
       model,
       contents: [
         {

@@ -98,5 +98,7 @@ export interface UserSettings {
   autoPlayAudio: boolean;
   voice: 'Kore' | 'Puck' | 'Zephyr' | 'Fenrir' | 'Charon';
   speechRate: number;
-  model: 'gemini-flash-latest' | 'gemini-3.8-flash' | 'gemini-3.1-flash-lite';
+  model: 'gemini-flash-latest' | 'gemini-3.8-flash' | 'gemini-3.1-flash-lite' | 'gemini-3.1-pro-preview';
+  customApiKey?: string;
+  isProUnlocked?: boolean;
 }

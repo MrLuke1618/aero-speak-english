@@ -44,9 +44,15 @@ export const soundManager = new SoundManager();
 
 export async function requestTTS(text: string, voice = 'Kore'): Promise<string | null> {
   try {
+    const customKey = localStorage.getItem('aerospeak_custom_key');
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (customKey) {
+      headers['x-gemini-api-key'] = customKey;
+    }
+
     const res = await fetch('/api/tts', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers,
       body: JSON.stringify({ text, voice }),
     });
     if (!res.ok) {

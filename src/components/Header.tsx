@@ -21,6 +21,7 @@ interface HeaderProps {
   onUpdateSettings: (newSettings: Partial<UserSettings>) => void;
   onOpenMockTestModal: () => void;
   onOpenGuideModal: (tab?: any) => void;
+  onOpenApiKeyModal: () => void;
   onToggleLanguage: (lang: AppLanguage) => void;
 }
 
@@ -31,6 +32,7 @@ export const Header: React.FC<HeaderProps> = ({
   onUpdateSettings,
   onOpenMockTestModal,
   onOpenGuideModal,
+  onOpenApiKeyModal,
   onToggleLanguage,
 }) => {
   const [showSettingsDropdown, setShowSettingsDropdown] = useState(false);
@@ -167,6 +169,30 @@ export const Header: React.FC<HeaderProps> = ({
               </select>
             </div>
 
+            {/* API Key / Pro Unlock Button */}
+            <button
+              onClick={onOpenApiKeyModal}
+              title={
+                settings.customApiKey
+                  ? settings.language === 'vi'
+                    ? 'API Key cá nhân đang hoạt động (Pro)'
+                    : 'Personal API Key Active (Pro)'
+                  : settings.language === 'vi'
+                  ? 'Nhập API Key cá nhân để mở khóa tính năng nâng cao'
+                  : 'Input personal API Key to unlock advanced features'
+              }
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs font-mono font-medium transition-colors ${
+                settings.customApiKey
+                  ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/40 hover:bg-emerald-500/25 shadow-sm shadow-emerald-500/20'
+                  : 'bg-[#141926] text-zinc-300 border-[#232c40] hover:border-emerald-500/40 hover:text-emerald-300'
+              }`}
+            >
+              <Key className="w-3.5 h-3.5 text-emerald-400" />
+              <span className="hidden sm:inline">
+                {settings.customApiKey ? 'PRO KEY' : 'API KEY'}
+              </span>
+            </button>
+
             {/* Audio Toggle */}
             <button
               onClick={() => onUpdateSettings({ autoPlayAudio: !settings.autoPlayAudio })}
@@ -208,8 +234,11 @@ export const Header: React.FC<HeaderProps> = ({
                       className="w-full bg-[#182030] border border-[#263048] rounded-lg p-1.5 text-zinc-200 focus:border-emerald-500 font-mono text-[11px]"
                     >
                       <option value="gemini-flash-latest">{t.modelOptions.flashLatest}</option>
-                      <option value="gemini-3.8-flash">{t.modelOptions.flash38}</option>
                       <option value="gemini-3.1-flash-lite">{t.modelOptions.flashLite31}</option>
+                      <option value="gemini-3.8-flash">{t.modelOptions.flash38}</option>
+                      {settings.customApiKey && (
+                        <option value="gemini-3.1-pro-preview">gemini-3.1-pro-preview (Flagship Pro Reasoning)</option>
+                      )}
                     </select>
                   </div>
 
@@ -234,6 +263,25 @@ export const Header: React.FC<HeaderProps> = ({
                       {settings.language}
                     </span>
                   </div>
+
+                  <button
+                    onClick={() => {
+                      setShowSettingsDropdown(false);
+                      onOpenApiKeyModal();
+                    }}
+                    className="w-full flex items-center justify-center gap-1.5 py-1.5 px-2 bg-emerald-500/20 hover:bg-emerald-500/30 rounded text-emerald-300 font-mono text-[11px] border border-emerald-500/40 transition-colors font-semibold"
+                  >
+                    <Key className="w-3.5 h-3.5" />
+                    <span>
+                      {settings.language === 'vi'
+                        ? settings.customApiKey
+                          ? 'Quản lý API Key cá nhân (PRO)'
+                          : 'Nhập API Key để mở khóa PRO'
+                        : settings.customApiKey
+                        ? 'Manage Personal API Key (PRO)'
+                        : 'Enter API Key to Unlock PRO'}
+                    </span>
+                  </button>
 
                   <button
                     onClick={() => {
